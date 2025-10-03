@@ -177,24 +177,80 @@ vector<Token> parseJsonWithIndex(const string &json, const vector<size_t> &struc
     return tokens;
 }
 
+// struct Parser {
+//     vector<Token> tokens;
+//     size_t idx = 0;
+
+//     Token peek() { return tokens[idx]; }
+//     Token get() { return tokens[idx++]; }
+//     bool hasNext() { return idx < tokens.size(); }
+
+//     Node parseValue() {
+//         Token t = peek();
+//         if (t.type == "String") { get(); return {"String", t.value}; }
+//         if (t.type == "Number") { get(); return {"Number", t.value}; }
+//         if (t.type == "True")   { get(); return {"True", "true"}; }
+//         if (t.type == "False")  { get(); return {"False", "false"}; }
+//         if (t.type == "Null")   { get(); return {"Null", "null"}; }
+//         if (t.type == "LeftBrace") return parseObject();
+//         if (t.type == "LeftBracket") return parseArray();
+//         throw runtime_error("Unexpected token: " + t.type);
+//     }
+
+//     Node parseObject() {
+//         get(); // consume '{'
+//         Node n; n.type = "Object";
+
+//         while (peek().type != "RightBrace") {
+//             Token key = get(); // must be String
+//             get(); // consume ':'
+//             Node value = parseValue();
+//             n.obj.push_back({key.value, value});
+//             if (peek().type == "Comma") get();
+//         }
+//         get(); // consume '}'
+//         return n;
+//     }
+
+//     Node parseArray() {
+//         get(); // consume '['
+//         Node n; n.type = "Array";
+
+//         while (peek().type != "RightBracket") {
+//             Node elem = parseValue();
+//             n.arr.push_back(elem);
+//             if (peek().type == "Comma") get();
+//         }
+//         get(); // consume ']'
+//         return n;
+//     }
+// };
+
 struct Parser {
     vector<Token> tokens;
-    size_t idx = 0;
+    size_t pos = 0;
 
-    Token peek() { return tokens[idx]; }
-    Token get() { return tokens[idx++]; }
-    bool hasNext() { return idx < tokens.size(); }
+    Token peek() {
+        if (pos >= tokens.size()) throw runtime_error("peek(): out of token range");
+        return tokens[pos];
+    }
+    Token get() {
+        if (pos >= tokens.size()) throw runtime_error("get(): out of token range");
+        return tokens[pos++];
+    }
 
     Node parseValue() {
         Token t = peek();
-        if (t.type == "String") { get(); return {"String", t.value}; }
-        if (t.type == "Number") { get(); return {"Number", t.value}; }
-        if (t.type == "True")   { get(); return {"True", "true"}; }
-        if (t.type == "False")  { get(); return {"False", "false"}; }
-        if (t.type == "Null")   { get(); return {"Null", "null"}; }
+
         if (t.type == "LeftBrace") return parseObject();
         if (t.type == "LeftBracket") return parseArray();
-        throw runtime_error("Unexpected token: " + t.type);
+        if (t.type == "String") { get(); return {"String", t.value}; }
+        if (t.type == "Number") { get(); return {"Number", t.value}; }
+        if (t.type == "True")   { get(); return {"Bool", "true"}; }
+        if (t.type == "False")  { get(); return {"Bool", "false"}; }
+        if (t.type == "Null")   { get(); return {"Null", "null"}; }
+
+        throw runtime_error("Unexpected token in parseValue: " + t.type + " (" + t.value + ")");
     }
 
     Node parseObject() {
@@ -202,7 +258,14 @@ struct Parser {
         Node n; n.type = "Object";
 
         while (peek().type != "RightBrace") {
-            Token key = get(); // must be String
+            Token key = get();
+            if (key.type != "String") {
+                throw runtime_error("Expected string as object key, got: " + key.type);
+            }
+            // keys can be empty ("") — allowed by JSON
+            if (peek().type != "Colon") {
+                throw runtime_error("Expected ':' after key, got: " + peek().type);
+            }
             get(); // consume ':'
             Node value = parseValue();
             n.obj.push_back({key.value, value});
@@ -217,8 +280,8 @@ struct Parser {
         Node n; n.type = "Array";
 
         while (peek().type != "RightBracket") {
-            Node elem = parseValue();
-            n.arr.push_back(elem);
+            Node value = parseValue();
+            n.arr.push_back(value);
             if (peek().type == "Comma") get();
         }
         get(); // consume ']'
@@ -256,24 +319,51 @@ void printNode(const Node &n, int indent=0) {
     }
 }
 
-int main() {
-    string json = R"({
-        "name": "Alice",
-        "age": 30,
-        "married": false,
-        "score": 99.5,
-        "children": null,
-        "hobbies": ["reading", "coding", "music"]
-    })";
+bool parseSimd(const string &json) {
+    try {
+        auto structurals = find_structurals(json);
+        if (structurals.empty()) {
+            std::cerr << "[SIMD Parser] No structurals found!\n";
+            return false;
+        }
+        auto tokens = parseJsonWithIndex(json, structurals);
+        Parser p{tokens};
+        Node root = p.parseValue();
+        return true; // successfully parsed
+    } catch (const std::exception &e) {
+        std::cerr << "[SIMD Parser] Exception: " << e.what() << "\n";
+        std::cerr << "Tokens:\n";
+        auto structurals = find_structurals(json);
+        auto tokens = parseJsonWithIndex(json, structurals);
+        for (size_t i = 0; i < std::min<size_t>(tokens.size(), 50); i++) {
+            std::cerr << i << ": " << tokens[i].type << " -> " << tokens[i].value << "\n";
+        }
 
-    auto structurals = find_structurals(json);
-    auto tokens = parseJsonWithIndex(json, structurals);
-
-    Parser p{tokens};
-    Node root = p.parseValue();
-
-    cout << "Parsed JSON Tree:\n";
-    printNode(root);
-
-    return 0;
+        return false;
+    }
 }
+
+// int main() {
+//     string json = R"({
+//         "name": "Alice",
+//         "age": 30,
+//         "married": false,
+//         "score": 99.5,
+//         "children": null,
+//         "hobbies": ["reading", "coding", "music"]
+//     })";
+
+//     auto structurals = find_structurals(json);
+//     auto tokens = parseJsonWithIndex(json, structurals);
+
+//     Parser p{tokens};
+//     Node root = p.parseValue();
+
+//     cout << "Parsed JSON Tree:\n";
+//     printNode(root);
+//     cout << "\n\n";
+
+//     cout << "parseSimd() returned: " << (parseSimd(json) ? "true" : "false") << "\n";
+
+//     return 0;
+// }
