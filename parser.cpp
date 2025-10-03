@@ -362,24 +362,38 @@ void printJson(const JsonValue& value, int indent = 0) {
     }
 }
 
-int main() {
-    string text = R"({
-        "person": {
-            "name": "Alice",
-            "details": {
-                "age": 30,
-                "skills": ["C++", "Python"],
-                "active": true
-            }
-        }
-    })";
-    Tokenizer tokenizer(text);
-    Parser parser(tokenizer);
-
-    JsonValue root = parser.parseValue();
-    cout << "Parsed JSON successfully!\n\n";
-    printJson(root);
-    cout << "\n";
-
-    return 0;
+bool parseNorm(const string &json) {
+    try {
+        Tokenizer tokenizer(json);
+        Parser parser(tokenizer);
+        
+        JsonValue root = parser.parseValue();
+        return true; // successfully parsed
+    } catch (...) {
+        return false;
+    }
 }
+
+// int main() {
+//     string json = R"({
+//         "person": {
+//             "name": "Alice",
+//             "details": {
+//                 "age": 30,
+//                 "skills": ["C++", "Python"],
+//                 "active": true
+//             }
+//         }
+//     })";
+//     Tokenizer tokenizer(json);
+//     Parser parser(tokenizer);
+
+//     JsonValue root = parser.parseValue();
+//     cout << "Parsed JSON successfully!\n\n";
+//     printJson(root);
+//     cout << "\n\n";
+
+//     cout << "parseNorm() returned: " << (parseNorm(json) ? "true" : "false") << "\n";
+
+//     return 0;
+// }
